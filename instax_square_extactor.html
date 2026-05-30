@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Instax Extractor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0e0e0f;
+    --bg2: #161618;
+    --bg3: #1e1e21;
+    --bg4: #26262a;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #f0eeeb;
+    --text2: #9b9896;
+    --text3: #5a5855;
+    --accent: #e8d5a3;
+    --accent2: #c4a96a;
+    --accent-dim: rgba(232,213,163,0.12);
+    --accent-dim2: rgba(232,213,163,0.06);
+    --success: #6fcf97;
+    --success-dim: rgba(111,207,151,0.12);
+    --danger: #eb5757;
+    --danger-dim: rgba(235,87,87,0.12);
+    --radius: 10px;
+    --radius-lg: 16px;
+    --font: 'DM Sans', sans-serif;
+    --mono: 'DM Mono', monospace;
+  }
+
+  html, body {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2.5rem 1rem 4rem;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 680px;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 0.5rem;
+  }
+  .header-left { display: flex; align-items: center; gap: 10px; }
+  .logo {
+    width: 36px; height: 36px;
+    background: var(--accent-dim);
+    border: 0.5px solid var(--accent2);
+    border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .title {
+    font-size: 17px;
+    font-weight: 500;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
+  .subtitle { font-size: 12px; color: var(--text3); }
+  .badge-local {
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--accent2);
+    background: var(--accent-dim2);
+    border: 0.5px solid var(--accent2);
+    border-radius: 6px;
+    padding: 3px 9px;
+    letter-spacing: 0.02em;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--bg2);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .card-header {
+    padding: 1rem 1.25rem 0.75rem;
+    border-bottom: 0.5px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .card-header svg { opacity: 0.5; }
+  .card-body { padding: 1.25rem; }
+
+  /* Drop zone */
+  .drop-zone {
+    border: 1.5px dashed var(--border2);
+    border-radius: var(--radius);
+    padding: 3rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--accent2);
+    background: var(--accent-dim2);
+  }
+  .drop-zone input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon {
+    width: 48px; height: 48px;
+    background: var(--bg3);
+    border: 0.5px solid var(--border2);
+    border-radius: 12px;
+    margin: 0 auto 1rem;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .drop-title { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+  .drop-sub { font-size: 13px; color: var(--text2); }
+
+  /* Settings */
+  .settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  .setting-group { display: flex; flex-direction: column; gap: 6px; }
+  .setting-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+  }
+  .format-btns { display: flex; gap: 6px; }
+  .fmt-btn {
+    flex: 1;
+    padding: 8px 0;
+    background: var(--bg3);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text2);
+    font-family: var(--mono);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.12s;
+    text-align: center;
+  }
+  .fmt-btn:hover { border-color: var(--border2); color: var(--text); }
+  .fmt-btn.active {
+    background: var(--accent-dim);
+    border-color: var(--accent2);
+    color: var(--accent);
+  }
+
+  .slider-row { display: flex; align-items: center; gap: 10px; }
+  .slider-val {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent);
+    min-width: 32px;
+    text-align: right;
+  }
+  input[type=range] {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: var(--bg4);
+    border-radius: 2px;
+    outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--bg2);
+  }
+  .quality-note {
+    font-size: 11px;
+    color: var(--text3);
+    font-family: var(--mono);
+  }
+
+  /* Loading */
+  #loading-section {
+    display: none;
+    text-align: center;
+    padding: 2rem 1.25rem;
+  }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 2px solid var(--border2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    margin: 0 auto 1rem;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-label { font-size: 14px; color: var(--text2); }
+  .loading-sub { font-size: 12px; color: var(--text3); margin-top: 4px; }
+
+  .progress-bar-wrap {
+    height: 3px;
+    background: var(--bg4);
+    border-radius: 2px;
+    margin-top: 1rem;
+    overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+    width: 0%;
+  }
+
+  /* Results */
+  #results-section { display: none; }
+  .results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  .results-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    font-size: 11px;
+    font-family: var(--mono);
+    padding: 3px 9px;
+    border-radius: 6px;
+    border: 0.5px solid;
+  }
+  .chip-green { color: var(--success); border-color: var(--success); background: var(--success-dim); }
+  .chip-amber { color: var(--accent); border-color: var(--accent2); background: var(--accent-dim2); }
+
+  .photo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 10px;
+    margin-bottom: 1.25rem;
+  }
+  .photo-card {
+    background: var(--bg3);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.12s;
+  }
+  .photo-card:hover { border-color: var(--border2); }
+  .photo-thumb {
+    aspect-ratio: 1;
+    overflow: hidden;
+    background: var(--bg4);
+  }
+  .photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .photo-meta {
+    padding: 6px 8px;
+    border-top: 0.5px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .photo-name { font-size: 11px; color: var(--text2); font-family: var(--mono); }
+  .photo-dl {
+    font-size: 14px;
+    color: var(--text3);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px;
+    line-height: 1;
+    transition: color 0.12s;
+  }
+  .photo-dl:hover { color: var(--accent); }
+
+  /* Action bar */
+  .action-bar {
+    display: flex;
+    gap: 8px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 18px;
+    border-radius: var(--radius);
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.12s;
+    border: 0.5px solid;
+  }
+  .btn-primary {
+    background: var(--accent-dim);
+    border-color: var(--accent2);
+    color: var(--accent);
+    flex: 1;
+    justify-content: center;
+  }
+  .btn-primary:hover { background: rgba(232,213,163,0.18); }
+  .btn-ghost {
+    background: var(--bg3);
+    border-color: var(--border2);
+    color: var(--text2);
+  }
+  .btn-ghost:hover { color: var(--text); border-color: var(--border2); }
+
+  /* Privacy footer */
+  .privacy {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: center;
+    font-size: 11px;
+    color: var(--text3);
+    padding-top: 0.5rem;
+  }
+
+  /* Pyodide init banner */
+  #init-banner {
+    background: var(--bg3);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text2);
+  }
+  .init-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent2);
+    flex-shrink: 0;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .init-dot.ready { background: var(--success); animation: none; }
+
+  /* Error */
+  .error-box {
+    background: var(--danger-dim);
+    border: 0.5px solid var(--danger);
+    border-radius: var(--radius);
+    padding: 0.75rem 1rem;
+    font-size: 13px;
+    color: var(--danger);
+    display: none;
+  }
+
+  svg { display: inline-block; vertical-align: middle; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--accent)">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="4" height="4" rx="0.5"/><rect x="13" y="7" width="4" height="4" rx="0.5"/><rect x="7" y="13" width="4" height="4" rx="0.5"/><rect x="13" y="13" width="4" height="4" rx="0.5"/>
+        </svg>
+      </div>
+      <div>
+        <div class="title">Instax extractor</div>
+        <div class="subtitle">Extract frames from scanner sheets</div>
+      </div>
+    </div>
+    <span class="badge-local">100% local</span>
+  </div>
+
+  <!-- Init banner -->
+  <div id="init-banner">
+    <div class="init-dot" id="init-dot"></div>
+    <span id="init-label">Loading Python runtime — first visit only, ~10 MB…</span>
+  </div>
+
+  <!-- Error box -->
+  <div class="error-box" id="error-box"></div>
+
+  <!-- Drop zone card -->
+  <div class="card">
+    <div class="card-header">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Input
+    </div>
+    <div class="card-body">
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" id="file-input" accept="image/png,image/jpeg" multiple>
+        <div class="drop-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--accent2)">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="12" y1="8" x2="12" y2="16"/>
+          </svg>
+        </div>
+        <div class="drop-title">Drop scanner sheet here</div>
+        <div class="drop-sub">PNG or JPEG · any resolution · any grid layout</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings card -->
+  <div class="card">
+    <div class="card-header">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg>
+      Output settings
+    </div>
+    <div class="card-body">
+      <div class="settings-grid">
+        <div class="setting-group">
+          <div class="setting-label">Format</div>
+          <div class="format-btns">
+            <div class="fmt-btn active" data-fmt="jpg">JPEG</div>
+            <div class="fmt-btn" data-fmt="png">PNG</div>
+          </div>
+        </div>
+        <div class="setting-group">
+          <div class="setting-label">Quality <span id="quality-note" class="quality-note">(jpeg only)</span></div>
+          <div class="slider-row">
+            <input type="range" id="quality-slider" min="60" max="100" step="1" value="95">
+            <span class="slider-val" id="quality-val">95</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Processing -->
+  <div class="card" id="loading-card" style="display:none">
+    <div id="loading-section" style="display:block">
+      <div class="spinner"></div>
+      <div class="loading-label" id="loading-label">Processing…</div>
+      <div class="loading-sub" id="loading-sub">Detecting template grid</div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar" id="progress-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="card" id="results-section">
+    <div class="card-header">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 12h6M9 15h4"/></svg>
+      Results
+    </div>
+    <div class="card-body">
+      <div class="results-header">
+        <div class="results-meta" id="results-meta"></div>
+      </div>
+      <div class="photo-grid" id="photo-grid"></div>
+      <div class="action-bar">
+        <button class="btn btn-primary" id="download-all-btn" onclick="downloadAll()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download all as ZIP
+        </button>
+        <button class="btn btn-ghost" onclick="resetApp()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+          Reset
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Privacy -->
+  <div class="privacy">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+    Your photos never leave your device — everything runs in your browser
+  </div>
+
+</div>
+
+<!-- JSZip for download -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<script>
+let pyodide = null;
+let extractedPhotos = []; // [{name, blob, url}]
+let outputFormat = 'jpg';
+let outputQuality = 95;
+
+// --- Format / quality UI ---
+document.querySelectorAll('.fmt-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.fmt-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    outputFormat = btn.dataset.fmt;
+    const note = document.getElementById('quality-note');
+    const slider = document.getElementById('quality-slider');
+    if (outputFormat === 'png') {
+      note.textContent = '(n/a for png)';
+      slider.disabled = true;
+      slider.style.opacity = '0.3';
+    } else {
+      note.textContent = '(jpeg only)';
+      slider.disabled = false;
+      slider.style.opacity = '1';
+    }
+  });
+});
+
+const qualitySlider = document.getElementById('quality-slider');
+const qualityVal = document.getElementById('quality-val');
+qualitySlider.addEventListener('input', () => {
+  outputQuality = parseInt(qualitySlider.value);
+  qualityVal.textContent = outputQuality;
+});
+
+// --- Drop zone ---
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+  if (files.length) handleFiles(files);
+});
+fileInput.addEventListener('change', () => {
+  const files = Array.from(fileInput.files);
+  if (files.length) handleFiles(files);
+});
+
+// --- Pyodide init ---
+async function initPyodide() {
+  try {
+    setInitLabel('Loading Python runtime…');
+    pyodide = await loadPyodide();
+    setInitLabel('Installing packages (numpy, opencv-python, pillow)…');
+    await pyodide.loadPackage(['numpy', 'opencv-python', 'pillow']);
+    setInitLabel('Ready', true);
+  } catch (err) {
+    showError('Failed to load Python runtime: ' + err.message);
+  }
+}
+
+function setInitLabel(text, done = false) {
+  document.getElementById('init-label').textContent = text;
+  if (done) document.getElementById('init-dot').classList.add('ready');
+}
+
+// --- Main processing ---
+async function handleFiles(files) {
+  if (!pyodide) { showError('Python runtime not ready yet — please wait a moment.'); return; }
+  hideError();
+  resetResults();
+  showLoading(true);
+
+  extractedPhotos = [];
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    setLoadingText(`Processing ${file.name}…`, `File ${i+1} of ${files.length}`);
+    setProgress(10);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const uint8 = new Uint8Array(arrayBuffer);
+      pyodide.globals.set('_img_bytes', uint8);
+      pyodide.globals.set('_fmt', outputFormat);
+      pyodide.globals.set('_quality', outputQuality);
+      pyodide.globals.set('_basename', file.name.replace(/\.[^.]+$/, ''));
+
+      setLoadingText(`Analysing ${file.name}…`, 'Detecting template grid');
+      setProgress(30);
+
+      const result = await pyodide.runPythonAsync(`
+import cv2, numpy as np, io, json, base64
+from PIL import Image
+
+def uniform_filter1d(arr, size):
+    kernel = np.ones(size) / size
+    return np.convolve(arr, kernel, mode='same')
+
+def find_template(gray):
+    _, dark = cv2.threshold(gray, 80, 255, cv2.THRESH_BINARY_INV)
+    contours, _ = cv2.findContours(dark, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        raise ValueError("Could not find dark template grid in image.")
+    x, y, w, h = cv2.boundingRect(max(contours, key=cv2.contourArea))
+    return x, y, w, h
+
+def detect_frame_bands(tgray, axis, probe_offset, min_size, threshold=150, smooth_size=40):
+    H, W = tgray.shape
+    max_size = H if axis == 0 else W
+    if axis == 0:
+        profile = tgray[:, min(probe_offset, W - 1)].astype(float)
+    else:
+        profile = tgray[min(probe_offset, H - 1), :].astype(float)
+    smooth = uniform_filter1d(profile, smooth_size)
+    bands = []
+    in_white, start = False, 0
+    for i, v in enumerate(smooth):
+        if v > threshold and not in_white:
+            start, in_white = i, True
+        elif v <= threshold and in_white:
+            if i - start > min_size:
+                bands.append((start, i))
+            in_white = False
+    if in_white and max_size - start > min_size:
+        bands.append((start, max_size))
+    return bands
+
+def encode_frame(frame_bgr, fmt, quality):
+    """Encode a BGR numpy array to base64 string. Uses PIL to avoid
+    the cv2.imencode ndims=3 issue with PNG in Pyodide's OpenCV build."""
+    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    pil_img = Image.fromarray(frame_rgb)
+    buf = io.BytesIO()
+    if fmt == 'png':
+        pil_img.save(buf, format='PNG', optimize=False)
+    else:
+        pil_img.save(buf, format='JPEG', quality=int(quality), subsampling=0)
+    return base64.b64encode(buf.getvalue()).decode('ascii')
+
+# --- Decode input image via PIL (avoids cv2.imdecode ndims bug for PNGs) ---
+raw = bytes(_img_bytes.to_py())
+pil_src = Image.open(io.BytesIO(raw)).convert('RGB')
+img = cv2.cvtColor(np.array(pil_src), cv2.COLOR_RGB2BGR)
+
+gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+tx, ty, tw, th = find_template(gray)
+template = img[ty:ty+th, tx:tx+tw]
+tgray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+tH, tW = tgray.shape
+
+probe_col = tW // 20
+min_size_r = tH // 10
+smooth_size = max(10, tH // 300)
+
+row_bands = detect_frame_bands(tgray, 0, probe_col, min_size_r, smooth_size=smooth_size)
+col_probe_row = row_bands[0][0] + tH // 40 if row_bands else tH // 20
+col_bands = detect_frame_bands(tgray, 1, col_probe_row, tW // 10, smooth_size=smooth_size)
+
+output_frames = []
+for ri, (r0, r1) in enumerate(row_bands):
+    for ci, (c0, c1) in enumerate(col_bands):
+        frame = template[r0:r1, c0:c1]
+        idx = ri * len(col_bands) + ci + 1
+        b64 = encode_frame(frame, _fmt, _quality)
+        output_frames.append({
+            'name': f'{_basename}_photo_{idx}.{_fmt}',
+            'data': b64,
+            'width': frame.shape[1],
+            'height': frame.shape[0],
+        })
+
+json.dumps({
+    'rows': len(row_bands),
+    'cols': len(col_bands),
+    'frames': output_frames
+})
+`);
+
+      setProgress(80);
+      const data = JSON.parse(result);
+
+      for (const frame of data.frames) {
+        const bytes = base64ToUint8(frame.data);
+        const mime = outputFormat === 'png' ? 'image/png' : 'image/jpeg';
+        const blob = new Blob([bytes], { type: mime });
+        const url = URL.createObjectURL(blob);
+        extractedPhotos.push({ name: frame.name, blob, url, width: frame.width, height: frame.height });
+      }
+
+      setProgress(95);
+      renderResults(data.rows, data.cols, file.name);
+
+    } catch (err) {
+      showError('Error processing ' + file.name + ': ' + (err.message || err));
+      showLoading(false);
+      return;
+    }
+  }
+
+  setProgress(100);
+  setTimeout(() => showLoading(false), 300);
+}
+
+function base64ToUint8(b64) {
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return arr;
+}
+
+function renderResults(rows, cols, filename) {
+  const meta = document.getElementById('results-meta');
+  meta.innerHTML = `
+    <span class="chip chip-green">${extractedPhotos.length} photos extracted</span>
+    <span class="chip chip-amber">${rows}×${cols} grid · ${outputFormat.toUpperCase()} ${outputFormat === 'jpg' ? outputQuality + '%' : ''}</span>
+  `;
+
+  const grid = document.getElementById('photo-grid');
+  grid.innerHTML = '';
+  for (const photo of extractedPhotos) {
+    const card = document.createElement('div');
+    card.className = 'photo-card';
+    card.innerHTML = `
+      <div class="photo-thumb"><img src="${photo.url}" alt="${photo.name}" loading="lazy"></div>
+      <div class="photo-meta">
+        <span class="photo-name">${photo.name.split('_photo_')[1] || photo.name}</span>
+        <button class="photo-dl" title="Download" onclick="downloadOne('${photo.name}')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+      </div>
+    `;
+    grid.appendChild(card);
+  }
+
+  document.getElementById('results-section').style.display = 'block';
+}
+
+function downloadOne(name) {
+  const photo = extractedPhotos.find(p => p.name === name);
+  if (!photo) return;
+  const a = document.createElement('a');
+  a.href = photo.url;
+  a.download = photo.name;
+  a.click();
+}
+
+async function downloadAll() {
+  if (!extractedPhotos.length) return;
+  const btn = document.getElementById('download-all-btn');
+  btn.textContent = 'Zipping…';
+  btn.disabled = true;
+
+  const zip = new JSZip();
+  for (const photo of extractedPhotos) {
+    const ab = await photo.blob.arrayBuffer();
+    zip.file(photo.name, ab);
+  }
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'instax_photos.zip';
+  a.click();
+  URL.revokeObjectURL(url);
+
+  btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download all as ZIP`;
+  btn.disabled = false;
+}
+
+function resetApp() {
+  extractedPhotos.forEach(p => URL.revokeObjectURL(p.url));
+  extractedPhotos = [];
+  document.getElementById('results-section').style.display = 'none';
+  document.getElementById('photo-grid').innerHTML = '';
+  fileInput.value = '';
+  hideError();
+}
+
+function showLoading(show) {
+  document.getElementById('loading-card').style.display = show ? 'block' : 'none';
+}
+function setLoadingText(label, sub) {
+  document.getElementById('loading-label').textContent = label;
+  document.getElementById('loading-sub').textContent = sub;
+}
+function setProgress(pct) {
+  document.getElementById('progress-bar').style.width = pct + '%';
+}
+function resetResults() {
+  document.getElementById('results-section').style.display = 'none';
+}
+function showError(msg) {
+  const box = document.getElementById('error-box');
+  box.textContent = msg;
+  box.style.display = 'block';
+}
+function hideError() {
+  document.getElementById('error-box').style.display = 'none';
+}
+
+// Boot
+initPyodide();
+</script>
+</body>
+</html>
