@@ -677,11 +677,20 @@ for ri, (r0, r1) in enumerate(row_bands):
             'height': frame.shape[0],
         })
 
-json.dumps({
+result_json = json.dumps({
     'rows': len(row_bands),
     'cols': len(col_bands),
     'frames': output_frames
 })
+
+# Explicitly free large objects so Pyodide's heap doesn't accumulate them
+# across multiple runs (e.g. after Reset). Without this, the second call to
+# Image.convert('RGB') on a large file raises MemoryError.
+import gc
+del raw, pil_src, img, gray, template, tgray, output_frames
+gc.collect()
+
+result_json
 `);
 
       setProgress(80);
@@ -782,6 +791,21 @@ function resetApp() {
   document.getElementById('photo-grid').innerHTML = '';
   fileInput.value = '';
   hideError();
+
+  // Clear any leftover large Python globals from the previous run to prevent
+  // MemoryError on the next Image.convert() call inside Pyodide's heap.
+  if (pyodide) {
+    pyodide.runPython(`
+import gc
+for _var in ['_img_bytes', 'raw', 'pil_src', 'img', 'gray', 'template', 'tgray',
+             'output_frames', 'result_json', '_fmt', '_quality', '_basename']:
+    try:
+        del globals()[_var]
+    except KeyError:
+        pass
+gc.collect()
+`);
+  }
 }
 
 function showLoading(show) {
